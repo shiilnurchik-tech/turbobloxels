@@ -1,0 +1,19 @@
+# Деплой «с сервером» на Render: общее облако уровней и расширений.
+# Для статической версии этот файл не нужен — там GitHub Pages.
+services:
+  - type: web
+    name: turbobloxels
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/stats
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: TBX_DATA_DIR
+        value: /var/data
+    disk:
+      name: tbx-data
+      mountPath: /var/data
+      sizeGB: 1

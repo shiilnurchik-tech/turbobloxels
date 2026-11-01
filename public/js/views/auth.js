@@ -1,5 +1,6 @@
 import { el, modal, toast } from '../dom.js';
 import { login, register } from '../store.js';
+import { apiMode } from '../api.js';
 
 /** Модалка входа/регистрации. Возвращает Promise<boolean>. */
 export function authModal() {
@@ -82,7 +83,13 @@ export function authModal() {
       body: el(
         'div',
         {},
-        el('p', { class: 'small muted' }, 'Аккаунт нужен, чтобы публиковать уровни и расширения. Играть можно и без него.'),
+        el(
+          'p',
+          { class: 'small muted' },
+          apiMode() === 'local'
+            ? 'Сервера рядом нет: аккаунт локальный, всё хранится только в этом браузере. Пароль не проверяется — он нужен для привычного вида формы.'
+            : 'Аккаунт нужен, чтобы публиковать уровни и расширения. Играть можно и без него.'
+        ),
         form
       ),
     });

@@ -166,3 +166,25 @@ test('игра запускается на уровне из облака', asyn
   assert.match(document.getElementById('view').textContent, /Тест/);
   view.destroy?.();
 });
+
+test('локальный режим: каталог и игра работают без сервера', async () => {
+  const api = await import('../public/js/api.js');
+  const { resetLocalDb, getLocalDb } = await import('../public/js/localdb.js');
+  resetLocalDb();
+  api.setApiMode('local');
+  assert.equal(api.apiMode(), 'local');
+
+  const { levelsView } = await import('../public/js/views/levels.js');
+  await renderView(levelsView, { tab: 'community' });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.match(document.getElementById('view').textContent, /Первый прыжок/);
+
+  const { playView } = await import('../public/js/views/play.js');
+  const view = await renderView(playView, { id: 'l_demo_local' });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const canvas = document.querySelector('#view .game-stage canvas');
+  assert.ok(canvas, 'canvas игры на месте');
+  assert.match(document.getElementById('view').textContent, /Первый прыжок/);
+  assert.equal(getLocalDb().levels[0].plays, 1, 'запуск уровня засчитан локально');
+  view.destroy?.();
+});

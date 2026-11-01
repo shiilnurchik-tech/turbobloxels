@@ -1,6 +1,7 @@
 /** Точка входа: маршрутизация, шапка, состояние пользователя. */
 import { el, mount, clear, toast } from './dom.js';
-import { store, refreshUser, login, register, logout, loadInstalled } from './store.js';
+import { store, refreshUser, logout, loadInstalled } from './store.js';
+import { detectMode, apiMode } from './api.js';
 import { homeView } from './views/home.js';
 import { editorView } from './views/editor.js';
 import { playView } from './views/play.js';
@@ -154,9 +155,29 @@ async function route() {
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
 }
 
+function showModeBadge(mode) {
+  const slot = document.getElementById('user-slot');
+  if (!slot || document.getElementById('mode-badge')) return;
+  const badge = el(
+    'span',
+    {
+      class: 'badge purple',
+      id: 'mode-badge',
+      title:
+        mode === 'local'
+          ? 'Локальный режим: сервера нет, уровни и расширения хранятся в этом браузере'
+          : 'Сервер на связи: уровни публикуются в общее облако',
+    },
+    mode === 'local' ? '💾 локально' : '☁️ сервер'
+  );
+  slot.prepend(badge);
+}
+
 async function boot() {
   loadInstalled();
   document.getElementById('user-slot').innerHTML = '';
+  await detectMode();
+  showModeBadge(apiMode());
   try {
     await refreshUser();
   } catch {

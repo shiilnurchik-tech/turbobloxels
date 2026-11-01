@@ -101,7 +101,7 @@ export class ExtRuntime {
     iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:360px;height:200px;border:0;opacity:0;pointer-events:none;';
     // Отдельный документ со своей CSP: страница игры остаётся строгой,
     // а песочнице разрешены inline-скрипты и eval (ей всё равно нужен eval).
-    iframe.src = '/sandbox.html';
+    iframe.src = new URL('../../sandbox.html', import.meta.url).href;
     document.body.appendChild(iframe);
     this.iframe = iframe;
 

@@ -1,5 +1,53 @@
-/** HTTP-клиент. Токен храним в localStorage: работает и внутри iframe-превью. */
+/**
+ * HTTP-клиент. Токен храним в localStorage: работает и внутри iframe-превью.
+ *
+ * Если рядом нет сервера (GitHub Pages, file://), клиент автоматически
+ * переключается в локальный режим: те же REST-вызовы обслуживает localdb.js
+ * поверх localStorage.
+ */
+import { localRequest } from './localdb.js';
+
 const TOKEN_KEY = 'tbx.token';
+const API_BASE = (typeof window !== 'undefined' && window.TBX_API_BASE ? String(window.TBX_API_BASE) : '/api').replace(/\/+$/, '');
+
+let mode = null;
+
+/** 'remote' | 'local' | null (ещё не проверяли). */
+export function apiMode() {
+  return mode;
+}
+
+export function setApiMode(next) {
+  mode = next === 'remote' || next === 'local' ? next : null;
+  return mode;
+}
+
+/** Определяет, есть ли поблизости сервер. Один раз за сессию. */
+export async function detectMode() {
+  if (mode) return mode;
+  try {
+    if (new URLSearchParams(location.search).get('local') === '1') {
+      mode = 'local';
+      return mode;
+    }
+  } catch {
+    /* не браузер */
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const response = await fetch(`${API_BASE}/stats`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const type = response.headers.get('content-type') || '';
+    mode = response.ok && type.includes('application/json') ? 'remote' : 'local';
+  } catch {
+    mode = 'local';
+  }
+  return mode;
+}
 
 export function getToken() {
   try {
@@ -19,6 +67,9 @@ export function setToken(token) {
 }
 
 async function request(path, { method = 'GET', body, timeout = 20000 } = {}) {
+  if (!mode) await detectMode();
+  if (mode === 'local') return localRequest(method, path, body);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const headers = {};
@@ -26,7 +77,7 @@ async function request(path, { method = 'GET', body, timeout = 20000 } = {}) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   try {
-    const response = await fetch(`/api${path}`, {
+    const response = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
       credentials: 'same-origin',
