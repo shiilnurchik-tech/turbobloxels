@@ -1,6 +1,14 @@
 import { el, mount, toast, confirmDialog, fmtDate } from '../dom.js';
 import { api } from '../api.js';
-import { store, listDrafts, deleteDraft, refreshExtensionList } from '../store.js';
+import {
+  store,
+  listDrafts,
+  deleteDraft,
+  refreshExtensionList,
+  installExtension,
+  uninstallExtension,
+  ensureHost,
+} from '../store.js';
 import { levelCard, boardThumb, sectionHead, characterThumb } from './common.js';
 
 const FEATURES = [
@@ -210,7 +218,36 @@ export async function homeView(root) {
                     el('span', { class: 'badge' }, el('span', { style: { width: '8px', height: '8px', borderRadius: '2px', background: b.color, display: 'inline-block' } }), b.name)
                   )
                 ),
-                el('a', { class: 'btn btn-ghost btn-sm', style: { marginTop: '10px' }, href: `#/extensions/${ext.id}` }, 'Открыть')
+                el(
+                  'div',
+                  { class: 'row', style: { gap: '6px', marginTop: '10px' } },
+                  el(
+                    'button',
+                    {
+                      class: `btn btn-sm${store.installed.has(ext.id) ? ' btn-ghost' : ''}`,
+                      onclick: async () => {
+                        if (store.installed.has(ext.id)) {
+                          uninstallExtension(ext.id);
+                          toast('Расширение выключено', 'info');
+                        } else {
+                          try {
+                            const { fetchExtension } = await import('../store.js');
+                            await fetchExtension(ext.id);
+                            installExtension(ext.id);
+                            store.hostIds = '';
+                            await ensureHost();
+                            toast(`«${ext.name}» установлено — блоки уже в редакторе`, 'success');
+                          } catch (err) {
+                            toast(err.message, 'error');
+                          }
+                        }
+                        location.reload();
+                      },
+                    },
+                    store.installed.has(ext.id) ? '✓ Включено' : 'Установить'
+                  ),
+                  el('a', { class: 'btn btn-ghost btn-sm', href: `#/extensions/${ext.id}` }, 'Код')
+                )
               )
             )
           )
