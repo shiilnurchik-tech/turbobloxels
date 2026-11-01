@@ -112,6 +112,7 @@ function renderUserSlot() {
       )
     );
   }
+  showModeBadge(apiMode());
 }
 
 export function rerender() {
@@ -177,7 +178,6 @@ async function boot() {
   loadInstalled();
   document.getElementById('user-slot').innerHTML = '';
   await detectMode();
-  showModeBadge(apiMode());
   try {
     await refreshUser();
   } catch {
