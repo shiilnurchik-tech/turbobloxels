@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>TurboBloxels — конструктор игр</title>
+    <meta
+      name="description"
+      content="TurboBloxels: собери уровень на доске 13×13, нарисуй персонажа и играй. Расширения на JavaScript добавляют новые блоки и правила."
+    />
+    <meta name="theme-color" content="#070c18" />
+    <link rel="stylesheet" href="css/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1324'/%3E%3Crect x='5' y='5' width='9' height='9' rx='2' fill='%233ddc84'/%3E%3Crect x='18' y='5' width='9' height='9' rx='2' fill='%234c9aff'/%3E%3Crect x='5' y='18' width='9' height='9' rx='2' fill='%23ffd93d'/%3E%3Crect x='18' y='18' width='9' height='9' rx='2' fill='%23ff5d73'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <a class="brand" href="#/home"><span class="brand-mark">▚</span>Turbo<span>Bloxels</span></a>
+        <nav class="nav" id="nav"></nav>
+        <div id="user-slot"></div>
+      </header>
+      <main id="view"></main>
+    </div>
+    <div id="toasts"></div>
+    <div id="modal-root"></div>
+    <script src="config.js"></script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
