@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'">
+<title>TurboBloxels extension sandbox</title>
+</head>
+<body>
+<script>
+(function () {
+  'use strict';
+  var PARENT = window.parent;
+  var queue = [];
+  var manifest = null;
+  var customActions = Object.create(null);
+  var gameHooks = Object.create(null);
+  var blockHooks = Object.create(null); // blockId -> { enter: fn, ... }
+  var loaded = false;
+
+  // onStart -> start, onTick -> tick: имена хуков и событий совпадают
+  function hookKey(name) {
+    var key = String(name);
+    if (key.slice(0, 2) === 'on' && key.length > 2) key = key.charAt(2).toLowerCase() + key.slice(3);
+    return key;
+  }
+
+  function fmt(value) {
+    if (typeof value === 'string') return value;
+    try { return JSON.stringify(value); } catch (e) { return String(value); }
+  }
+  function post(message) {
+    message.tbx = 1;
+    try { PARENT.postMessage(message, '*'); } catch (e) {}
+  }
+  function flush() {
+    if (!queue.length) return;
+    var batch = queue;
+    queue = [];
+    post({ type: 'commands', commands: batch });
+  }
+  function cmd(name, payload) {
+    if (queue.length > 300) return; // страховка от бесконечного цикла
+    queue.push({ name: name, payload: payload || {} });
+    if (queue.length === 1) setTimeout(flush, 0);
+  }
+  function errText(err) {
+    if (!err) return 'неизвестная ошибка';
+    return String(err && err.stack ? err.stack : err).slice(0, 900);
+  }
+  function num(value, def) {
+    var n = Number(value);
+    return Number.isFinite(n) ? n : def;
+  }
+
+  var TBX = {
+    version: '1.0.0',
+
+    /** Объявление расширения. Вызывается один раз. */
+    define: function (def) {
+      if (loaded) return post({ type: 'error', message: 'TBX.define() можно вызвать только один раз' });
+      if (!def || typeof def !== 'object') return post({ type: 'error', message: 'TBX.define() ждёт объект' });
+      loaded = true;
+      try {
+        manifest = normalize(def);
+      } catch (err) {
+        return post({ type: 'error', message: errText(err) });
+      }
+      if (def.hooks && typeof def.hooks === 'object') {
+        Object.keys(def.hooks).forEach(function (key) {
+          if (typeof def.hooks[key] === 'function') gameHooks[hookKey(key)] = def.hooks[key];
+        });
+      }
+      manifest.hooks = Object.keys(gameHooks);
+      post({ type: 'loaded', manifest: manifest });
+    },
+
+    /** Дополнительный обработчик события игры: start, tick, win, lose. */
+    on: function (name, fn) {
+      if (typeof name === 'string' && typeof fn === 'function') gameHooks[hookKey(name)] = fn;
+    },
+
+    /** Новое действие для «Книги правил». */
+    action: function (def) {
+      if (!def || !def.id || typeof def.run !== 'function') {
+        return post({ type: 'error', message: 'TBX.action() ждёт { id, name, run }' });
+      }
+      customActions[String(def.id)] = {
+        id: String(def.id),
+        name: String(def.name || def.id),
+        value: ['none', 'number', 'text', 'color', 'block', 'select'].indexOf(def.value) >= 0 ? def.value : 'none',
+        run: def.run,
+      };
+      post({ type: 'actions', actions: Object.keys(customActions).map(function (key) {
+        return { id: key, name: customActions[key].name, value: customActions[key].value };
+      }) });
+    },
+
+    log: function () { post({ type: 'log', level: 'log', text: [].map.call(arguments, fmt).join(' ') }); },
+    warn: function () { post({ type: 'log', level: 'warn', text: [].map.call(arguments, fmt).join(' ') }); },
+    error: function () { post({ type: 'log', level: 'error', text: [].map.call(arguments, fmt).join(' ') }); },
+
+    // ---- команды игре -----------------------------------------------------
+    message: function (text) { cmd('message', { text: String(text) }); },
+    addScore: function (n) { cmd('score', { value: num(n, 1) }); },
+    damage: function (n) { cmd('damage', { value: num(n, 1) }); },
+    heal: function (n) { cmd('heal', { value: num(n, 1) }); },
+    bounce: function (power) { cmd('bounce', { power: num(power, 15) }); },
+    teleport: function (x, y) { cmd('teleport', { x: num(x, 0), y: num(y, 0) }); },
+    setBlock: function (x, y, id) {
+      cmd('setBlock', { x: Math.round(num(x, 0)), y: Math.round(num(y, 0)), id: id == null ? null : String(id) });
+    },
+    particles: function (x, y, color, count) {
+      cmd('particles', { x: num(x, 0), y: num(y, 0), color: String(color || '#ffffff'), count: Math.min(60, Math.max(1, num(count, 8))) });
+    },
+    sound: function (name) { cmd('sound', { name: String(name || 'coin') }); },
+    speed: function (seconds) { cmd('speed', { value: num(seconds, 3) }); },
+    invincible: function (seconds) { cmd('invincible', { value: num(seconds, 3) }); },
+    win: function () { cmd('win', {}); },
+    lose: function () { cmd('lose', {}); },
+
+    report: function (data) {
+      var text;
+      try { text = JSON.stringify(data); } catch (e) { text = String(data); }
+      post({ type: 'report', text: String(text).slice(0, 4000) });
+    },
+  };
+
+  function normalize(def) {
+    var id = String(def.id || '').trim();
+    if (!/^[a-z0-9_\-]{2,40}$/i.test(id)) throw new Error('id расширения: латиница, цифры, "-" и "_", 2-40 символов');
+    var name = String(def.name || id).slice(0, 60);
+    var blocks = (Array.isArray(def.blocks) ? def.blocks : []).slice(0, 60).map(function (b) {
+      if (!b || !b.id) throw new Error('у блока нет id');
+      var bid = String(b.id);
+      if (!/^[a-z0-9_\-]{1,40}$/i.test(bid)) throw new Error('плохой id блока: ' + bid);
+      var color = /^#[0-9a-f]{3,8}$/i.test(String(b.color)) ? String(b.color) : '#9aa4b2';
+      var pattern = null;
+      if (Array.isArray(b.pattern)) {
+        pattern = b.pattern.slice(0, 13).map(function (row) { return String(row).slice(0, 13); });
+      }
+      var rules = Array.isArray(b.rules) ? b.rules : [];
+      if (num(b.damage, 0) > 0) {
+        rules = rules.concat([{ trigger: 'touch', conditions: [], actions: [{ type: 'damage', value: Math.min(9, num(b.damage, 1)) }] }]);
+      }
+      if (b.on && typeof b.on === 'object') {
+        blockHooks[bid] = {};
+        Object.keys(b.on).forEach(function (event) {
+          if (typeof b.on[event] === 'function') blockHooks[bid][event] = b.on[event];
+        });
+      }
+      return {
+        id: bid,
+        name: String(b.name || bid).slice(0, 40),
+        color: color,
+        solid: b.solid !== false,
+        liquid: !!b.liquid,
+        climbable: !!b.climbable,
+        friction: Math.min(1, Math.max(0, num(b.friction, 0.9))),
+        restitution: Math.min(1.4, Math.max(0, num(b.restitution, 0))),
+        pattern: pattern,
+        rules: rules.slice(0, 12),
+        desc: String(b.desc || '').slice(0, 200),
+        hooks: blockHooks[bid] ? Object.keys(blockHooks[bid]) : [],
+      };
+    });
+    return {
+      id: id,
+      name: name,
+      version: String(def.version || '1.0.0').slice(0, 20),
+      description: String(def.description || '').slice(0, 400),
+      author: String(def.author || '').slice(0, 40),
+      blocks: blocks,
+      hooks: Object.keys(gameHooks),
+      actions: Object.keys(customActions).map(function (key) {
+        return { id: key, name: customActions[key].name, value: customActions[key].value };
+      }),
+    };
+  }
+
+  function runBlockHook(blockId, event, ctx) {
+    var bag = blockHooks[blockId];
+    if (!bag || typeof bag[event] !== 'function') return;
+    try {
+      bag[event](ctx);
+    } catch (err) {
+      post({ type: 'error', message: 'Блок "' + blockId + '" (' + event + '): ' + errText(err) });
+    }
+  }
+
+  window.addEventListener('message', function (event) {
+    if (event.source !== PARENT) return;
+    var data = event.data;
+    if (!data || data.tbx !== 1) return;
+
+    if (data.type === 'load') {
+      try {
+        // eslint-disable-next-line no-new-func
+        var fn = new Function('TBX', data.source + '\n//# sourceURL=' + String(data.filename || 'extension.js'));
+        fn(TBX);
+        if (!loaded) {
+          post({ type: 'error', message: 'Расширение не вызвало TBX.define({...})' });
+        }
+      } catch (err) {
+        post({ type: 'error', message: errText(err) });
+      }
+      return;
+    }
+
+    if (data.type === 'event') {
+      var payload = data.ctx || {};
+      try {
+        if (data.name === 'block') {
+          runBlockHook(payload.block, payload.event, payload);
+        } else if (data.name === 'game') {
+          if (typeof gameHooks[payload.event] === 'function') gameHooks[payload.event](payload);
+        } else if (data.name === 'action') {
+          var act = customActions[payload.action];
+          if (act) act.run(payload.ctx || {}, payload.args);
+        }
+      } catch (err) {
+        post({ type: 'error', message: errText(err) });
+      }
+      flush();
+    }
+  });
+
+  post({ type: 'ready', tbxVersion: TBX.version });
+})();
+</script>
+</body>
+</html>
